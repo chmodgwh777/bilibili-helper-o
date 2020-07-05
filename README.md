@@ -1,3 +1,12 @@
+# Note
+
+This is a fork of [bilibili-helper](https://github.com/bilibili-helper/bilibili-helper-o) for releasing the xpi file (Firefox's addon).
+
+鉴于最近在 Firefox [AMO](https://addons.mozilla.org/zh-CN/firefox/) 上搜索不到此扩展，于是 fork 了原始chrome 插件的仓库，在这里发布打包好的xpi文件.
+
+安装方法：在Firefox导航栏中键入 `about:config` ，搜索 `xpinstall.signatures.required` 这一项并修改为 `false`　，然后在从文件安装附加组件即可.
+
+
 # bilibili-helper
 [![LICENSE](https://img.shields.io/github/license/bilibili-helper/bilibili-helper-o)](LICENSE)
 [![Build Status](https://img.shields.io/travis/zacyu/bilibili-helper.svg)](https://travis-ci.org/zacyu/bilibili-helper)
