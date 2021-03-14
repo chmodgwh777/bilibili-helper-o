@@ -13,9 +13,9 @@ const CleanWebpackPlugin = require('clean-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const OptimizeCSSAssetsPlugin = require('optimize-css-assets-webpack-plugin');
 const MergeJsonWebpackPlugin = require('merge-jsons-webpack-plugin');
-const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
+//const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
 const webpack = require('webpack');
-const WriteJsonPlugin = require('write-json-webpack-plugin');
+const WriteJsonPlugin = require('./write-json-webpack-plugin');
 
 const srcPath = path.resolve('src');
 const buildPath = path.resolve('build');
@@ -62,7 +62,8 @@ module.exports = (env) => {
             'cv': path.resolve(jsPath, 'pages', 'cv', indexFilename),
             'tbilibili': path.resolve(jsPath, 'pages', 'tbilibili', indexFilename),
             'videoList': path.resolve(jsPath, 'pages', 'videoList', indexFilename),
-            'vipPrivilege': path.resolve(jsPath, 'pages', 'vipPrivilege', indexFilename),
+            'global': path.resolve(jsPath, 'pages', 'global', indexFilename),
+            'home': path.resolve(jsPath, 'pages', 'home', indexFilename),
         },
         output: {
             filename: '[name].js',

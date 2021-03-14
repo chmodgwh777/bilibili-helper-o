@@ -10,11 +10,11 @@ import {List} from 'react-virtualized';
 import {createTab} from 'Utils';
 import 'react-virtualized/styles.css';
 import {theme} from 'Styles';
+import {av2bv} from 'Utils';
 
 export default () => {
     const FeedsContainer = styled.div.attrs({className: 'feeds-container'})`
       margin: 9px 0 9px 10px;
-      max-height: 258px;
       overflow: auto;
       & .ReactVirtualized__List::-webkit-scrollbar {
         display: none;
@@ -118,20 +118,26 @@ export default () => {
 
         }
 
-        handleOnClick = (link) => {
-            chrome.runtime.sendMessage({
-                command: 'setGAEvent',
-                action: 'click',
-                category: 'dynamicCheck',
-                label: 'dynamicCheck',
-            });
-            createTab(link);
+        handleOnClick = (e, link) => {
+            if (e.button !== 2) {
+                chrome.runtime.sendMessage({
+                    command: 'setGAEvent',
+                    action: 'click',
+                    category: 'dynamicCheck',
+                    label: 'dynamicCheck',
+                });
+                createTab(link, e.button === 0);
+            }
         };
 
         createLinkByType = (type, data) => {
             switch (type) {
                 case 8:
-                    return 'https://www.bilibili.com/video/av' + data.stat.aid;
+                    if (this.props.useBvid) {
+                        return 'https://www.bilibili.com/video/' + av2bv(data.stat.aid);
+                    } else {
+                        return 'https://www.bilibili.com/video/av' + data.stat.aid;
+                    }
                 case 16:
                     return 'https://vc.bilibili.com/video/' + data.item.id;
                 case 64:
@@ -143,7 +149,7 @@ export default () => {
 
         // up投稿
         renderType8 = ({index, link, owner, title, pic, duration, desc}) => (
-            <FeedBox key={index} onClick={() => this.handleOnClick(link)}>
+            <FeedBox href={link} key={index} onMouseDown={(e) => this.handleOnClick(e, link)}>
                 <FeedImg style={{backgroundImage: `url(${pic})`}}/>
                 <FeedInfo>
                     <span
@@ -156,7 +162,7 @@ export default () => {
 
         // up小视频
         renderType16 = ({index, link, item, user}) => (
-            <FeedBox key={index} onClick={() => this.handleOnClick(link)}>
+            <FeedBox href={link} key={index} onMouseDown={(e) => this.handleOnClick(e, link)}>
                 <FeedImg style={{backgroundImage: `url(${item.cover.default})`}}/>
                 <FeedInfo>
                     <span title={user.name}>{user.name}</span>
@@ -168,7 +174,7 @@ export default () => {
 
         // 专栏
         renderType64 = ({index, link, author, title, banner_url}) => (
-            <FeedBox key={index} onClick={() => this.handleOnClick(link)}>
+            <FeedBox href={link} key={index} onMouseDown={(e) => this.handleOnClick(e, link)}>
                 <FeedImg style={{backgroundImage: `url(${banner_url})`}}/>
                 <FeedInfo>
                     <span title={author.name}>{author.name}</span>
@@ -180,7 +186,7 @@ export default () => {
 
         // 番剧
         renderType512 = ({index, link, new_desc, cover, apiSeasonInfo}) => (
-            <FeedBox key={index} onClick={() => this.handleOnClick(link)}>
+            <FeedBox href={link} key={index} onMouseDown={(e) => this.handleOnClick(e, link)}>
                 <FeedImg style={{backgroundImage: `url(${cover})`}}/>
                 <FeedInfo>
                     <span title={apiSeasonInfo.title}>{apiSeasonInfo.title}</span>
@@ -208,7 +214,7 @@ export default () => {
                     <FeedsContainer>
                         <List
                             width={200}
-                            height={255}
+                            height={298}
                             rowCount={this.state.feedList.length}
                             rowHeight={86}
                             rowRenderer={this.renderLine}

@@ -7,6 +7,7 @@
 
 import moment from 'moment';
 import Url from 'url-parse';
+import store from 'store';
 
 /**
  * @param command {string}
@@ -23,18 +24,61 @@ export const sendMessage = (command, key, callback) => {
     });
 };
 
+let currentLangConfig = store.get('bilibili-helper-language');
+let lang = (currentLangConfig && currentLangConfig.subPage && currentLangConfig.subPage.value) || navigator.language;
+let i18nCacheValidTime = 1000; // 1s
+let i18nCacheTimer;
 /**
- * @param t {string}
- * @param options {object}
+ * i18n工具函数
+ * @description 配合language模块重新写了一下
+ * @param string {string}
+ * @param [options] {object}
  */
-export const __ = (t, options = null) => chrome.i18n.getMessage(t, options);
+export const __ = (string, options = null) => {
+    // 做一次短暂缓存，用于响应语言设置变化
+    if (!i18nCacheTimer) {
+        i18nCacheTimer = setTimeout(() => {
+            currentLangConfig = store.get('bilibili-helper-language');
+            lang = (currentLangConfig && currentLangConfig.subPage && currentLangConfig.subPage.value) || navigator.language;
+            i18nCacheTimer = null;
+        }, i18nCacheValidTime);
+    }
+    if (lang === 'auto' || lang === chrome.i18n.getUILanguage()) {
+        return chrome.i18n.getMessage(string, options);
+    } else if (window.i18nMap && (lang in window.i18nMap)) {
+        const target = window.i18nMap[lang][string];
+        if (target) {
+            const {message, placeholders = {}} = target;
+            let resultMessage = message;
+            // 检查替换变量
+            const replacedValue = /\$(.+?)\$/g.exec(message);
+
+            if (replacedValue) {
+                const targetRes = replacedValue.slice(1);
+                targetRes.map(t => t.toLowerCase()).map(t => {
+                    if (t in placeholders) {
+                        resultMessage = message.replace(new RegExp(`\\$${t}\\$`, 'ig'), () => {
+                            return options.shift();
+                        });
+                    }
+                });
+            }
+            return resultMessage;
+        } else {
+            return '';
+        }
+    } else {
+        console.error(`not catch lang: ${lang} in string ${string}`);
+        return '';
+    }
+};
 
 /**
  * 创建新tab页面
  * @param url
  */
-export const createTab = (url) => {
-    chrome.tabs.create({url});
+export const createTab = (url, active = true) => {
+    chrome.tabs.create({url, active});
 };
 
 /**
@@ -43,7 +87,7 @@ export const createTab = (url) => {
  */
 export const version = chrome.runtime.getManifest().version;
 
-export const appName =  chrome.runtime.getManifest().name;
+export const appName = chrome.runtime.getManifest().name;
 
 /**
  * 根据资源名获取扩展程序内部资源
@@ -75,6 +119,8 @@ export const getLink = (url_name) => {
             return chrome.extension.getURL('config.html');
         case 'favourite':
             return 'https://space.bilibili.com/';
+        case 'history':
+            return 'https://www.bilibili.com/account/history';
     }
 };
 
@@ -194,5 +240,95 @@ export const fetchFromHelper = (url, options) => {
         });
     }
 
-    return fetch(decodeURIComponent(urlObject.href), options).catch((e)=> console.error(url, e));
+    return fetch(decodeURIComponent(urlObject.href), options).catch((e) => console.error(url, e));
+};
+
+// 来源 https://www.zhihu.com/question/381784377/answer/1099438784
+const avbv = {
+    table: 'fZodR9XQDSUm21yCkr6zBqiveYah8bt4xsWpHnJE7jL5VG3guMTKNPAwcF',
+    map: JSON.parse(`{"1":13,"2":12,"3":46,"4":31,"5":43,"6":18,"7":40,"8":28,"9":5,"f":0,"Z":1,"o":2,"d":3,"R":4,"X":6,"Q":7,"D":8,"S":9,"U":10,"m":11,"y":14,"C":15,"k":16,"r":17,"z":19,"B":20,"q":21,"i":22,"v":23,"e":24,"Y":25,"a":26,"h":27,"b":29,"t":30,"x":32,"s":33,"W":34,"p":35,"H":36,"n":37,"J":38,"E":39,"j":41,"L":42,"V":44,"G":45,"g":47,"u":48,"M":49,"T":50,"K":51,"N":52,"P":53,"A":54,"w":55,"c":56,"F":57}`),
+    s: [11, 10, 3, 8, 4, 6],
+    xor: 177451812,
+    add: 8728348608,
+};
+
+export const av2bv = (avid) => {
+    if (typeof avid === 'number') {
+        avid = (avid ^ avbv.xor) + avbv.add;
+        const r = ['B', 'V', '1', ' ', ' ', '4', ' ', '1', ' ', '7', ' ', ' '];
+        for (let i = 0; i < 6; ++i) {
+            r[avbv.s[i]] = avbv.table[Math.floor(avid / 58 ** i) % 58];
+        }
+        return r.join('');
+    } else {
+        console.warn('wrong id:' + avid);
+    }
+};
+
+export const bv2av = (bvid) => {
+    let r = 0;
+    for (let i = 0; i < 6; ++i) {
+        r += avbv.map[bvid[avbv.s[i]]] * 58 ** i;
+    }
+
+    return (r - avbv.add) ^ avbv.xor;
+};
+
+export const initI18n = () => {
+    return new Promise(resolve => {
+        if (!window.i18nMap) {
+            if (chrome.runtime.getBackgroundPage) {
+                chrome.runtime.getBackgroundPage((win) => {
+                    window.i18nMap = win.i18nMap;
+                    resolve();
+                });
+            } else {
+                chrome.runtime.sendMessage({command: 'getI18nMap'}, (i18nMap) => {
+                    window.i18nMap = i18nMap;
+                    resolve();
+                });
+            }
+        }
+    });
+};
+
+export const getUID = () => {
+    return new Promise(resolve => {
+        chrome.cookies.get({
+            url: 'http://interface.bilibili.com/',
+            name: 'DedeUserID',
+        }, (cookie) => {
+            const thisSecond = (new Date()).getTime() / 1000;
+            // expirationDate 是秒数
+            if (cookie && cookie.expirationDate > thisSecond) {
+                resolve(cookie.value);
+            } else {
+                resolve();
+            }
+        });
+    });
+};
+
+/**
+ * 将部分HTML实体字符转化为名称
+ * @param string
+ * @return {*}
+ */
+export const encodeHTMLEntries = (string) => {
+    return string.replace(/(["'&<>])/g, (char) => {
+        switch (char) {
+            case '"':
+                return '&quot;';
+            case '\'':
+                return '&apos;';
+            case '&':
+                return '&amp;';
+            case '<':
+                return '&lt;';
+            case '>':
+                return '&gt;';
+            default:
+                return char;
+        }
+    });
 };

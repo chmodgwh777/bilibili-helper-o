@@ -6,7 +6,7 @@
  */
 import _ from 'lodash';
 import $ from 'jquery';
-import {has} from 'mobx';
+//import {has} from 'mobx';
 //const ffmpeg = require('ffmpeg.js/ffmpeg-mp4.js');
 import FLV from '../lib/flv';
 import React from 'react';
@@ -23,7 +23,7 @@ const videoDataCache = {
     new: {},
 };
 
-const hasCopyright = () => !!location.href.match(/^https:\/\/www\.bilibili\.com\/bangumi\/play/);
+const hasCopyright = () => !!location.href.match(/^https:\/\/www\.bilibili\.com\/bangumi\/play\/ep/);
 
 export default () => {
     const {color} = theme;
@@ -42,7 +42,6 @@ export default () => {
     const Description = styled.p`
       font-size: 12px;
       min-width: unset;
-      max-width: 100%;
       color: rgb(255, 255, 255);
       background-color: rgb(251, 114, 153);
       padding: 0px 4px;
@@ -51,7 +50,7 @@ export default () => {
       border-color: rgb(251, 114, 153);
       border-image: initial;
       border-radius: 4px;
-      width: max-content;
+      width: 450px;
       transform: translate(4px, 0px) scale(0.9);
       transform-origin: left;
     `;
@@ -201,7 +200,7 @@ export default () => {
                     sendResponse();
                 } else if (message.command === 'videoDownloadSendVideoRequest') {
                     let {data, url, method, type} = message;
-                    const {cid, avid, bvid, qn = '', fourk = 0} = data;
+                    let {cid, avid, bvid, qn = '', fourk = 0} = data;
                     if (type === 'new') {
                         if (location.href.indexOf('bangumi') >= 0) {
                             url = new Url(bangumiFlvDownloadURL);
@@ -337,16 +336,26 @@ export default () => {
             } else {
                 const scriptHTML = document.createElement('script');
                 scriptHTML.innerHTML = `
-                fetch('${url}&requestFrom=bilibili-helper', {
-                    method: 'get',
-                    credentials: 'include',
-                })
-                .then(res => res.json())
-                .then(res => {
-                    window.postMessage({command:'bilibili-helper-video-download-get-flv-url', res: {...res, type: '${type}', url: '${url}'}}, '*');
-                }).catch(e => {
-                    console.log(e);
-                });
+                (function(){
+                    let url = '${url}';
+                    let currentQuality = __GetCookie("CURRENT_QUALITY");
+                    if (/&qn=&/.test(url)) {
+                        url = url.replace(/qn=(&)?/, 'qn=' + currentQuality + '$1');
+                        if (+currentQuality === 120) {
+                            url = url.replace(/fourk=0(&)?/, 'fourk=1$1');
+                        }
+                    }
+                    fetch(\`\${url}&requestFrom=bilibili-helper\`, {
+                        method: 'get',
+                        credentials: 'include',
+                    })
+                    .then(res => res.json())
+                    .then(res => {
+                        window.postMessage({command:'bilibili-helper-video-download-get-flv-url', res: {...res, type: '${type}', url: '${url}'}}, '*');
+                    }).catch(e => {
+                        console.log(e);
+                    });
+                })();
                 `;
                 document.body.appendChild(scriptHTML);
             }
@@ -476,7 +485,7 @@ export default () => {
             //}
             //} else
             return (<LinkGroup key={quality} downloading={downloading} disabled={downloading}>
-                {!hasCopyright() ? _.map(durl, (o, i) => {
+                {_.map(durl, (o, i) => {
                     const title = durl.length > 1 ? `${i + 1}` : accept_description[accept_quality.indexOf(+quality)];
                     return (
                         <React.Fragment key={i}>
@@ -486,7 +495,7 @@ export default () => {
                              </LinkGroupTitle> : null}
                             <a
                                 key={i}
-                                href={o.url}
+                                href={o.url.replace('http://', 'https://')}
                                 referrerPolicy="unsafe-url"
                                 target="__blank"
                                 download
@@ -499,7 +508,7 @@ export default () => {
                             </a>}
                         </React.Fragment>
                     );
-                }) : <LinkGroupTitle>由于版权限制禁止下载，非版权视频不受影响</LinkGroupTitle>}
+                })}
                 <Progress percentage={percentage}/>
             </LinkGroup>);
             //);
@@ -527,15 +536,19 @@ export default () => {
             return (
                 <React.Fragment>
                     <Title>视频下载 - 切换清晰度</Title>
-                    <Description>现已支持4K视频下载。并从1.2.22版本开始停止提供版权视频下载功能，非版权视频不受影响</Description>
+                    <Description>现已支持4K视频下载。并从1.2.22版本开始停止提供b站版权视频下载功能，非版权视频不受影响</Description>
                     <Description>下载出现问题请检查是否有安装下载或者广告屏蔽相关的其他扩展，他们可能导致会处理浏览器的默认行为导致助手下载功能异常</Description>
                     <Description>合并下载会先下载至内存最后弹出另存为窗口。当卡住时，请下载分段</Description>
                     <Container>
-                        {loadedVideo && (loadedVideo.durl || loadedVideo.dash) && this.renderFLV()}
-                        {!videoData[currentCid] ? <LinkGroupTitle>
-                            {!errorStr && <p>请尝试切换视频清晰度 或 切换到旧播放页面</p>}
-                            {errorStr && <p>{errorStr}</p>}
-                        </LinkGroupTitle> : null}
+                        {hasCopyright() ? <LinkGroup><LinkGroupTitle>由于版权限制禁止下载，非版权视频不受影响</LinkGroupTitle></LinkGroup> : (
+                            <React.Fragment>
+                                {loadedVideo && (loadedVideo.durl || loadedVideo.dash) && this.renderFLV()}
+                                {!videoData[currentCid] ? <LinkGroupTitle>
+                                    {!errorStr && <p>请尝试切换视频清晰度 或 切换到旧播放页面</p>}
+                                    {errorStr && <p>{errorStr}</p>}
+                                </LinkGroupTitle> : null}
+                            </React.Fragment>
+                        )}
                     </Container>
                 </React.Fragment>
             );

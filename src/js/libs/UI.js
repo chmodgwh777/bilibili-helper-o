@@ -5,6 +5,22 @@
  */
 import _ from 'lodash';
 
+const PAGE_REGEXP = {
+    home: /^https?:\/\/www\.bilibili\.com\/(\?spm_id_from(.*)$|$)/,
+    dynamic: /^https?:\/\/t\.bilibili\.com\//,
+    videoPlay: /^https?:\/\/www\.bilibili\.com\/(video\/(av|bv|BV)|bangumi\/play\/(ss|ep))(.*)/,
+    livePlay: /^https?:\/\/live\.bilibili\.com\/([0-9]+)/,
+    live: /^https?:\/\/live\.bilibili\.com\//,
+    readCV: /^https?:\/\/www\.bilibili\.com\/read\/cv(.*)/,
+    readRank: /^https?:\/\/www\.bilibili\.com\/read\/ranking(.*)/,
+    read: /^https?:\/\/www\.bilibili\.com\/read\//,
+    space: /^https?:\/\/space\.bilibili\.com\//,
+    message: /^https?:\/\/message\.bilibili\.com\//,
+    watchLater: /^https?:\/\/www\.bilibili\.com\/watchlater\//,
+    history: /^https?:\/\/www\.bilibili\.com\/account\/history/,
+    search: /^https?:\/\/search\.bilibili\.com\//,
+};
+
 export class UI {
     constructor({name, dependencies = []}) {
         this.name = name;
@@ -84,6 +100,13 @@ export class UI {
         });
     };
 
+    /**
+     * 轮询给定选择器并返回结果
+     * @param containerSelectors 查询Selectors
+     * @param interval 轮询间隔
+     * @param more 返回所有匹配的对象
+     * @return {Promise<*>}
+     */
     interval = (containerSelectors, interval = 500, more = false) => {
         let retryTime = 0;
         const retryMax = 15;
@@ -103,4 +126,21 @@ export class UI {
             }, interval);
         });
     };
+
+    isPage = (pageName = false) => {
+        const url = window.location.href;
+        if (!pageName) {
+            for (const item in PAGE_REGEXP) {
+                const pageUrl = new RegExp(PAGE_REGEXP[item]);
+                if (pageUrl.test(url)) {
+                    return item;
+                }
+            }
+            return false;
+        } else {
+            if (!PAGE_REGEXP[pageName]) { return false; }
+            const pageUrl = new RegExp(PAGE_REGEXP[pageName]);
+            return pageUrl.test(url);
+        }
+    }
 }

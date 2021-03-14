@@ -14,7 +14,6 @@ import {theme} from 'Styles';
 export default () => {
     const FeedsContainer = styled.div.attrs({className: 'feeds-upper-container'})`
       margin: 9px 0 9px 10px;
-      max-height: 258px;
       overflow: auto;
       & .ReactVirtualized__List{
         outline: none;
@@ -86,7 +85,7 @@ export default () => {
     `;
 
     const RoomName = styled.h6`
-      max-width: 182px;
+      max-width: 230px;
       position: absolute;
       left: 7px;
       bottom: 5px;
@@ -157,7 +156,7 @@ export default () => {
                     <FeedsContainer>
                         <List
                             width={200}
-                            height={255}
+                            height={298}
                             rowCount={this.state.feedList.length}
                             rowHeight={86}
                             rowRenderer={this.renderLine}

@@ -17,8 +17,8 @@ export class VideoDownload extends Feature {
         super({
             name: 'videoDownload',
             kind: 'video',
-            permissions: ['downloads'],
             dependencies: ['videoAnchor'],
+            permissions: ['downloads'],
             settings: {
                 on: true,
                 hasUI: true,
@@ -57,6 +57,7 @@ export class VideoDownload extends Feature {
                 '*://interface.bilibili.com/player?id=cid*',
                 '*://api.bilibili.com/x/player.so?id=cid*',
                 '*://api.bilibili.com/x/web-interface/view?*', // 获取cid和aid
+                '*://api.bilibili.com/x/player/v2?*', // 有一个新的接口，2020年11月25日
             ],
         };
         chrome.webRequest.onBeforeSendHeaders.addListener(details => {
@@ -67,7 +68,9 @@ export class VideoDownload extends Feature {
             }
             const url = new Url(details.url, '', true);
             const {pathname, query: data} = url;
-            if (data && data.requestFrom) return;
+            if (data && data.requestFrom) {
+                return;
+            }
             const tabData = this.messageStore.createData(tabId);
             if (pathname === '/x/web-interface/view') {
                 tabData.queue.push({
@@ -85,10 +88,11 @@ export class VideoDownload extends Feature {
                     url: url.origin + url.pathname,
                 });
                 this.messageStore.dealWith(tabId); // 处理queue
-            } else if (pathname === '/x/player/playurl' || pathname === '/pgc/player/web/playurl') { // 新页面
+            } else if (pathname === '/x/player/playurl' || pathname === '/pgc/player/web/playurl' || pathname === '/x/player/v2') { // 新页面
                 //const newUrl = new Url(flvDownloadURL);
                 //const {cid, avid, qn = ''} = data;
                 //newUrl.set('query', {cid, avid, otype: 'json', qn});
+                console.warn(url);
                 tabData.queue.push({
                     command: 'videoDownloadSendVideoRequest',
                     type: 'new',
@@ -124,15 +128,19 @@ export class VideoDownload extends Feature {
         });
         chrome.webRequest.onHeadersReceived.addListener((details) => {
             const {responseHeaders, initiator, url} = details;
-            if (/^chrome-extension:\/\//.test(initiator)) return;
+            if (/^chrome-extension:\/\//.test(initiator)) {
+                return;
+            }
             const urlObject = new Url(url, '', true);
             const {query: data} = url;
-            if (data && data.requestFrom) return;
+            if (data && data.requestFrom) {
+                return;
+            }
             const filenameObject = this.downloadFilenames[urlObject.pathname];
             if (filenameObject) {
                 const {filename: originFilename, cid} = filenameObject;
                 const filename = originFilename.replace(/[|"*?:<>]/g, '_');
-                const targetData = _.find(responseHeaders, (o) => o.name === 'Content-Disposition');
+                const targetData = _.find(responseHeaders, (o) => o.name.toLowerCase() === 'content-disposition');
                 const nameValue = `attachment; filename="${encodeURIComponent(filename)}.${cid}.flv"; filename*="utf-8' '${encodeURIComponent(filename)}.${cid}.flv"`.replace('/', '%2f');
                 if (targetData) {
                     targetData.value = nameValue;
@@ -147,7 +155,7 @@ export class VideoDownload extends Feature {
         }, {
             urls: [
                 '*://*.acgvideo.com/*',
-                '*://*.bilivideo.com/*'
+                '*://*.bilivideo.com/*',
             ],
         }, ['responseHeaders', 'blocking']);
     };

@@ -13,8 +13,7 @@ import styled from 'styled-components';
 import {Button} from 'Components/common/Button';
 import {Crc32Engine} from 'Libs/crc32';
 import {List} from 'react-virtualized';
-import {getFilename} from 'Utils';
-import {parseTime} from 'Utils';
+import {getFilename, parseTime, encodeHTMLEntries} from 'Utils';
 import {theme} from 'Styles';
 import './styles.scss';
 import 'react-virtualized/styles.css';
@@ -46,7 +45,7 @@ export default () => {
       outline: none;
       & .no-data {}
     `;
-    const UnloadList =  styled.div.attrs({className: 'bilibili-helper-danmu-list'})`
+    const UnloadList = styled.div.attrs({className: 'bilibili-helper-danmu-list'})`
       position: relative;
       height: 200px;
       margin-left: 4px;
@@ -299,30 +298,39 @@ export default () => {
         };
 
         getNewDANMUList = (oid, pid, segmentIndex = 1) => {
-            if (oid) {
-                // 检测到新的分段弹幕需要加载
-                if (segmentIndex === 1 && this.segmentDanmuOid !== oid) {
-                    this.segmentDanmuOid = oid;
-                    this.segmentDanmuList = [];
-                    Promise.all([
-                        this.getNewDanmuOption(oid, pid, 1),
-                        this.getVideoDuration(),
-                    ]).then(([pageSize, duration]) => {
-                        this.segmentDanmuPageSize = pageSize;
-                        this.segmentSize = Math.ceil(duration / (pageSize / 1000));
-                        this.currentOid = oid;
-                        this.currentPid = pid;
-                    });
+            return new Promise((resolve, reject) => {
+                if (oid) {
+                    // 检测到新的分段弹幕需要加载
+                    if (segmentIndex === 1 && this.segmentDanmuOid !== oid) {
+                        this.segmentDanmuOid = oid;
+                        this.segmentDanmuList = [];
+                        this.getNewDanmuOption(oid, pid, 1)
+                            .then(({pageSize, total}) => {
+                                this.segmentDanmuPageSize = pageSize;
+                                this.segmentSize = total;
+                                this.currentOid = oid;
+                                this.currentPid = pid;
+                                this.setState({
+                                    needLoadByHandle: true,
+                                    loading: false,
+                                    loadingText: '',
+                                }, () => resolve());
+                            });
+                    } else {
+                        resolve();
+                    }
+                } else {
                     this.setState({
                         needLoadByHandle: true,
                         loading: false,
                         loadingText: '',
                     });
+                    reject();
                 }
-            }
+            });
         };
 
-        getDanmuData = (oid, pid, segmentIndex) => {
+        getDanmuData = async (oid, pid, segmentIndex) => {
             const url = new Url(apis.seg);
             url.set('query', {
                 type: 1,
@@ -330,42 +338,77 @@ export default () => {
                 pid,
                 segment_index: segmentIndex,
             });
-            chrome.runtime.sendMessage({command: 'fetchNewTypeDanmu', url: url.toString()}, (danmuArray) => {
-                const targetData = danmuArray.map(({id: rowId, content: danmu, midHash: authorHash, mode, progress, fontsize, color, ctime, idStr, weight}) => {
-                    if (mode === 7) {
-                        try {
-                            danmu = danmu.replace(/[\n\r]/g, '');
-                            danmu = JSON.parse(danmu)[4];
-                        } catch (e) {
-                            console.error(danmu);
-                        }
+            return new Promise(resolve => {
+                chrome.runtime.sendMessage({command: 'fetchNewTypeDanmu', url: url.toString()}, (danmuArray) => {
+                    if (!danmuArray || danmuArray.length === 0) {
+                        return resolve(false);
                     }
-                    return {rowId, danmu, authorHash, fontsize, color, mode, ctime, idStr, weight, progress, time: parseTime(progress || 0)};
-                });
-                const data = this.sortJSONByTime(targetData);
-                this.segmentDanmuList[segmentIndex - 1] = data;
-                const currentFullList = this.segmentDanmuList.reduce((res, segment) => {
-                    return res.push(...segment), res;
-                }, []);
-                const danmuJSON = {
-                    count: currentFullList.length,
-                    list: currentFullList,
-                    cid: oid,
-                };
-                this.orderedJSON = {...danmuJSON};
+                    const targetData = danmuArray.map(({id: rowId, content: danmu, midHash: authorHash, mode, progress, fontsize, color, ctime, idStr, weight}) => {
+                        if (mode === 7) {
+                            try {
+                                danmu = danmu.replace(/[\n\r]/g, '');
+                                danmu = JSON.parse(danmu)[4];
+                            } catch (e) {
+                                console.error(danmu);
+                            }
+                        }
+                        return {
+                            rowId, content: danmu, danmu, authorHash, fontsize, color, mode, ctime, idStr, weight, progress: (progress || 0),
+                            time: parseTime(progress || 0),
+                        };
+                    });
+                    const data = this.sortJSONByTime(targetData);
+                    this.segmentDanmuList[segmentIndex - 1] = data;
+                    const currentFullList = this.segmentDanmuList.reduce((res, segment) => {
+                        return res.push(...segment), res;
+                    }, []);
+                    const danmuJSON = {
+                        count: currentFullList.length,
+                        list: currentFullList,
+                        cid: oid,
+                    };
+                    this.orderedJSON = {...danmuJSON};
 
-                this.setState({
-                    danmuJSON: danmuJSON,
-                    loaded: true,
-                    loading: false,
-                    currentCid: oid,
-                }, () => {
-                    let xmlStr = `<?xml version="1.0" encoding="UTF-8"?><i><chatserver></chatserver><chatid>${oid}</chatid><mission></mission><maxlimit></maxlimit><state></state><real_name></real_name><source></source>`;
-                    this.danmuDocumentStr = currentFullList.reduce((xml, line) => {
-                        const {danmu, authorHash, mode, progress, fontsize, color, ctime, idStr, weight} = line;
-                        return xmlStr += `<d p="${(progress || 0) / 1000},${mode},${fontsize},${color},${ctime},${weight},${authorHash},${idStr}">${danmu}</d>`;
-                    }, xmlStr) + '</i>';
+                    this.setState({
+                        danmuJSON: danmuJSON,
+                        loaded: true,
+                        loading: false,
+                        currentCid: oid,
+                    }, () => {
+                        let xmlStr = `<?xml version="1.0" encoding="UTF-8"?><i><chatserver></chatserver><chatid>${oid}</chatid><mission></mission><maxlimit></maxlimit><state></state><real_name></real_name><source></source>`;
+                        this.danmuDocumentStr = currentFullList.reduce((xml, line) => {
+                            const {danmu, authorHash, mode, progress, fontsize, color, ctime, idStr, weight} = line;
+                            return xmlStr += `<d p="${(progress || 0) / 1000},${mode},${fontsize},${color},${ctime},${weight},${authorHash},${idStr}">${encodeHTMLEntries(danmu)}</d>`;
+                        }, xmlStr) + '</i>';
+                        resolve(true);
+                    });
                 });
+            }).then(hasMore => {
+                if (hasMore && segmentIndex < this.segmentSize) {
+                    return this.getDanmuData(oid, pid, segmentIndex + 1);
+                }
+            })
+        };
+
+        getVideoInitialData = () => {
+            return new Promise((resolve, reject) => {
+                this.injectScript(`
+                    (()=>{
+                        if (window.__INITIAL_STATE__ && window.__INITIAL_STATE__.epInfo) {
+                            const pid = window.__INITIAL_STATE__.epInfo.aid;
+                            const oid = window.__INITIAL_STATE__.epInfo.cid;
+                            window.postMessage({command: 'setVideoInitialData', pid, oid}, '*');
+                        }
+                    })();
+                `, 5000);
+                const messageCallback = (event) => {
+                    const {data} = event;
+                    if (data.command === 'setVideoInitialData') {
+                        window.removeEventListener('message', messageCallback);
+                        data ? resolve(data) : reject();
+                    }
+                };
+                window.addEventListener('message', messageCallback);
             });
         };
 
@@ -377,6 +420,7 @@ export default () => {
                         const messageCallback = (event) => {
                             const {data} = event;
                             if (data.command === 'getVideoDuration') {
+                                console.log(window.player.getDuration());
                                 window.postMessage({command: 'setDuration', duration: window.player.getDuration()}, '*');
                                 window.removeEventListener('message', messageCallback);
                             }
@@ -625,6 +669,7 @@ export default () => {
                 command: type === 'ass' ? 'downloadDanmuASS' : 'downloadDanmuXML',
                 cid: this.state.currentCid,
                 danmuDocumentStr: this.danmuDocumentStr,
+                danmuJSON: this.orderedJSON,
                 date: this.danmuDate,
                 filename: getFilename(document),
                 origin: type === 'ass' ? document.location.href : null,
@@ -632,15 +677,27 @@ export default () => {
         };
 
         handleOnClickLoadDanmu = () => {
-            this.setState({
-                loading: true,
-                loadingText: '弹幕加载中~(๑•̀ㅂ•́)و',
-                needLoadByHandle: false,
-            }, () => {
-                for (let i = 0; i < this.segmentSize; ++i) {
-                    this.getDanmuData(this.currentOid, this.currentPid, i + 1);
+            new Promise((resolve) => {
+                if (!this.currentPid || !this.currentOid) {
+                    this.getVideoInitialData().then(({oid, pid}) => {
+                        this.currentOid = oid;
+                        this.currentPid = pid;
+                        resolve();
+                    });
+                } else {
+                    resolve();
                 }
-            });
+            }).then(() => {
+                this.setState({
+                    loading: true,
+                    loadingText: '弹幕加载中~(๑•̀ㅂ•́)و',
+                    needLoadByHandle: false,
+                }, () => {
+                    this.getNewDANMUList(this.currentOid, this.currentPid).then(() => {
+                        return this.getDanmuData(this.currentOid, this.currentPid, 1);
+                    });
+                });
+            }).catch((reason) => console.error(reason));
         };
 
         createCardDOM = (data) => {
@@ -787,7 +844,7 @@ export default () => {
 
         renderList = () => <DanmuList
             ref={i => this.danmuListRef = i}
-            width={414}
+            width={418}
             height={200}
             rowCount={this.state.danmuJSON.list.length}
             rowHeight={this.getRowHeight}
