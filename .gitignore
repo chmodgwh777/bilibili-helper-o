@@ -3,6 +3,7 @@ node_modules/
 .vscode/
 *.pem
 *.crx
+*.xpi
 .idea/
 .DS_Store
 package-lock.json
